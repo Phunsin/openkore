@@ -25,6 +25,7 @@ use Modules 'register';
 use bytes;
 no encoding 'utf8';
 use enum qw(KNOWN_MESSAGE UNKNOWN_MESSAGE ACCOUNT_ID);
+use Digest::HMAC_MD5 qw(hmac_md5_hex);
 
 ##
 # Network::MessageTokenizer->new(Hash* rpackets)
@@ -110,18 +111,57 @@ sub getBuffer {
 # - UNKNOWN_MESSAGE - This is an unknown message, i.e. we don't know its length.
 # - ACCOUNT_ID - This is an account ID.
 # `l`
+sub getMessageIDNew {
+    uc join '', unpack '@3H2 @2H2', $_[0]
+}
+
 sub readNext {
 	my ($self, $type) = @_;
 	my $buffer = \$self->{buffer};
 
 	return undef if (length($$buffer) < 2);
 
-	my $switch = getMessageID($$buffer);
 	my $rpackets = $self->{rpackets};
-	my $size = $rpackets->{$switch}{length};
-	
+	my $switch = getMessageID($$buffer);
 	my $result;
-	
+
+	if (length($$buffer) > 26) {
+		# check is HMAC or not
+		my $newSwitch = getMessageIDNew($$buffer);
+		my $realSize = $rpackets->{$newSwitch}{length};
+		if ($realSize > 1) {
+			# Static length message.
+			my $hmacSize = $realSize + 26;
+			my $hmac = unpack('H*', substr($$buffer, 2 + $realSize + 8, 16));
+			if (length($$buffer) >= $hmacSize && $hmac eq hmac_md5_hex(substr($$buffer, 2, $realSize + 8), pack('H*', 'AE7AEE43215F3B442010CEE2AB647FBA'))) {
+				$result = substr($$buffer, 2, $realSize);
+				substr($$buffer, 0, $hmacSize, '');
+				$$type = KNOWN_MESSAGE;
+				return $result;
+			} elsif ($switch eq "00DE" && $newSwitch eq "0A7C") {
+				return undef;
+			}
+		} elsif (
+			defined($realSize)
+			and $realSize == 0 # old Kore convention
+			|| $realSize == -1 # packet extractor v3
+		) {
+			# Variable length message.
+			$realSize = unpack("v", substr($$buffer, 4, 2));
+			my $hmacSize = $realSize + 26;
+			my $hmac = unpack('H*', substr($$buffer, 2 + $realSize + 8, 16));
+			if (length($$buffer) >= $hmacSize && $hmac eq hmac_md5_hex(substr($$buffer, 2, $realSize + 8), pack('H*', 'AE7AEE43215F3B442010CEE2AB647FBA'))) {
+				$result = substr($$buffer, 2, $realSize);
+				substr($$buffer, 0, $hmacSize, '');
+				$$type = KNOWN_MESSAGE;
+				return $result;
+			} elsif ($switch eq "00DE" && $newSwitch eq "0A7C") {
+				return undef;
+			}
+		}
+	}
+	my $size = $rpackets->{$switch}{length};
+
 	#Log::warning sprintf("Packet %s %d %d \n", $switch, $rpackets->{$switch}{length}, $size);
 
 	my $nextMessageMightBeAccountID = $self->{nextMessageMightBeAccountID};
@@ -129,7 +169,7 @@ sub readNext {
 
 	if ($nextMessageMightBeAccountID) {
 		if (length($$buffer) >= 4) {
-			
+
 		$result = substr($$buffer, 0, 4);
 		if (unpack("V1",$result) == unpack("V1",$Globals::accountID)) {
 				substr($$buffer, 0, 4, '');
@@ -138,7 +178,7 @@ sub readNext {
 				# Account ID is "hidden" in a packet (0283 is one of them)
 				return $self->readNext($type);
 			}
-		
+
 		} else {
 			$self->{nextMessageMightBeAccountID} = $nextMessageMightBeAccountID;
 		}
@@ -146,8 +186,7 @@ sub readNext {
 	} elsif ($size > 1) {
 		# Static length message.
 		if (length($$buffer) >= $size) {
-			$result = substr($$buffer, 0, $size);
-			substr($$buffer, 0, $size, '');
+			$result = substr($$buffer, 0, $size, '');
 			$$type = KNOWN_MESSAGE;
 		}
 
