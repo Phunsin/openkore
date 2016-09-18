@@ -54,6 +54,7 @@ use Interface;
 use Utils qw(dataWaiting timeOut);
 use Utils::Exceptions;
 use Translation;
+use Digest::HMAC_MD5 qw(hmac_md5);
 
 ##
 # Network::DirectConnection->new([wrapper])
@@ -173,6 +174,19 @@ sub serverSend {
 			Plugins::callHook("Network::serverSend/pre", { msg => \$msg });
 		}
 		if (defined $msg) {
+			my $switch = uc(unpack("H2", substr($msg, 1, 1))) . uc(unpack("H2", substr($msg, 0, 1)));
+			if ($switch eq "0436") {
+				$self->{hmac_enc} = 1;
+				$self->{seq} = 0;
+				$self->{flag} = 1;
+			} elsif ($self->getState() != Network::IN_GAME) {
+				$self->{hmac_enc} = 0;
+				$self->{seq} = 0;
+			} elsif($self->{hmac_enc}) {
+				$msg .= pack('V', $self->{flag}) . pack('V', $self->{seq}++);
+				$msg .= hmac_md5($msg, pack('H*', 'AE7AEE43215F3B442010CEE2AB647FBA'));
+				$msg = pack('v', length($msg) + 2) . $msg;
+			}
 			$self->{remote_socket}->send($msg);
 			if (Plugins::hasHook("Network::serverSend")) {
 				Plugins::callHook("Network::serverSend", { msg => $msg });
