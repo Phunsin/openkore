@@ -213,7 +213,7 @@ sub dropTargetWhileMoving {
 	my $ID = AI::args->{attackID};
 	message T("Dropping target - you will not kill steal others\n");
 	$char->sendAttackStop;
-	$monsters{$ID}{ignore} = 1;
+	$monsters{$ID}{ignore} = 0;
 
 	# Right now, the queue is either
 	#   move, route, attack
@@ -391,7 +391,7 @@ sub main {
 		}
 
 	} elsif (
-		$config{attackCheckLOS} && $args->{attackMethod}{distance} > 2
+		$config{attackCheckLOS} && $args->{attackMethod}{distance} > 1
 		&& (($config{attackCanSnipe} && !checkLineSnipable($realMyPos, $realMonsterPos))
 		|| (!$config{attackCanSnipe} && $realMonsterDist <= $args->{attackMethod}{maxDistance} && !checkLineWalkable($realMyPos, $realMonsterPos, 1)))
 	) {
