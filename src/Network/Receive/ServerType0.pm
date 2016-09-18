@@ -1048,10 +1048,8 @@ sub parse_items {
 
 =pod
 parse_items_nonstackable
-
 Change in packet behavior: the amount is not specified, but this is a
 non-stackable item (equipment), so the amount is obviously "1".
-
 =cut
 sub parse_items_nonstackable {
 	my ($self, $args) = @_;
@@ -1127,20 +1125,27 @@ sub map_loaded {
 		main::initMapChangeVars();
 	} else {
 
-		$messageSender->sendSync(1) if ($masterServer->{serverType} eq 'bRO'); # tested at bRO 2013.11.26 - revok
-
-		$messageSender->sendGuildMasterMemberCheck();
+		#$messageSender->sendSync(1) if ($masterServer->{serverType} eq 'bRO'); # tested at bRO 2013.11.26 - revok
+		#if( ($masterServer->{serverType} eq 'tRO') && ($config{'XKore'} eq '0') )
+		#{
+		#	$messageSender->sendMapLoaded();
+		#	$messageSender->sendSync(1);
+		#}
+		#$messageSender->sendGuildMasterMemberCheck();
 
 		# Replies 01B6 (Guild Info) and 014C (Guild Ally/Enemy List)
-		$messageSender->sendGuildRequestInfo(0);
+		#$messageSender->sendGuildRequestInfo(0);
 
-		$messageSender->sendGuildRequestInfo(0) if ($masterServer->{serverType} eq 'bRO'); # tested at bRO 2013.11.26, this is sent two times and i don't know why - revok
+		#$messageSender->sendGuildRequestInfo(0) if (grep { $masterServer->{serverType} eq $_ } qw( bRO tRO )); # tested at bRO 2013.11.26, this is sent two times and i don't know why - revok + tRO
 
 		# Replies 0166 (Guild Member Titles List) and 0154 (Guild Members List)
-		$messageSender->sendGuildRequestInfo(1);
-		message(T("You are now in the game\n"), "connection");
-		Plugins::callHook('in_game');
-		$messageSender->sendMapLoaded();
+		#$messageSender->sendGuildRequestInfo(1);
+		#message(T("You are now in the game\n"), "connection");
+		#Plugins::callHook('in_game');
+		#if ($masterServer->{serverType} ne 'tRO')
+		#{
+		#	$messageSender->sendMapLoaded();
+		#}
 		$timeout{'ai'}{'time'} = time;
 	}
 
@@ -1149,9 +1154,10 @@ sub map_loaded {
 	$char->{pos_to} = {%{$char->{pos}}};
 	message(TF("Your Coordinates: %s, %s\n", $char->{pos}{x}, $char->{pos}{y}), undef, 1);
 
-	$messageSender->sendIgnoreAll("all") if ($config{ignoreAll});
-	$messageSender->sendRequestCashItemsList() if ($masterServer->{serverType} eq 'bRO'); # tested at bRO 2013.11.30, request for cashitemslist
-	$messageSender->sendCashShopOpen() if ($config{whenInGame_requestCashPoints});
+	#$messageSender->sendIgnoreAll("all") if ($config{ignoreAll});
+	#$messageSender->sendRequestCashItemsList() if (grep { $masterServer->{serverType} eq $_ } qw( bRO tRO )); # tested at bRO 2013.11.30, request for cashitemslist + tRO
+	#$messageSender->sendCashShopOpen() if ($config{whenInGame_requestCashPoints});
+	#$messageSender->SendEAC() if (($masterServer->{serverType} eq 'tRO') && ($config{'XKore'} eq '0'));
 }
 
 sub actor_look_at {
@@ -3674,7 +3680,6 @@ sub npc_talk {
 =pod
 	my $newmsg;
 	$self->decrypt(\$newmsg, substr($args->{RAW_MSG}, 8));
-
 	my $msg = substr($args->{RAW_MSG}, 0, 8) . $newmsg;
 	my $ID = substr($msg, 4, 4);
 	my $talkMsg = unpack("Z*", substr($msg, 8));
@@ -4453,7 +4458,7 @@ sub received_characters {
 	## Note to devs: If other official servers support > 3 characters, then
 	## you should add these other serverTypes to the list compared here:
 	if (($args->{switch} eq '099D') && 
-		(grep { $masterServer->{serverType} eq $_ } qw( twRO iRO idRO ))
+		(grep { $masterServer->{serverType} eq $_ } qw( twRO iRO idRO tRO ))
 	) {
 		$net->setState(1.5);
 		if ($charSvrSet{sync_CountDown} && $config{'XKore'} ne '1') {
@@ -7486,6 +7491,29 @@ sub senbei_amount {
 	my ($self, $args) = @_;
 	
 	$char->{senbei} = $args->{senbei};
+}
+sub game_guard{
+        my ($self, $args) = @_;
+}
+sub EAC{
+	$net->setState(Network::IN_GAME);
+	undef $conState_tries;
+	$char = $chars[$config{char}];
+	return unless changeToInGameState();
+	if ($config{'XKore'} eq '0') {
+	$messageSender->sendMapLoaded();
+	$messageSender->sendSync(1);
+	$messageSender->sendGuildMasterMemberCheck();
+	$messageSender->sendGuildRequestInfo(0);
+	$messageSender->sendGuildRequestInfo(0);
+	$messageSender->sendGuildRequestInfo(1);	
+	$messageSender->sendIgnoreAll("all") if ($config{ignoreAll});
+	$messageSender->sendRequestCashItemsList() if (grep { $masterServer->{serverType} eq $_ } qw( bRO tRO )); # tested at bRO 2013.11.30, request for cashitemslist + tRO
+	$messageSender->sendCashShopOpen() if ($config{whenInGame_requestCashPoints});
+	$messageSender->SendEAC();
+	}
+	message(T("You are now in the game\n"), "connection");
+	Plugins::callHook('in_game');
 }
 
 1;
